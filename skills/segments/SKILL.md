@@ -1,15 +1,15 @@
 ---
 name: onesignal-segments
-description: Use this skill when a user wants to create or reason about a OneSignal Segment, audience, cohort, targeting group, engaged users, inactive users, VIP users, purchasers, message clickers, or users matching behavior or attributes. Prefer this skill when the user describes building an audience for a campaign, Journey, message, or analysis, even if they do not explicitly say "Segment".
+description: Use this skill when a user wants to create or reason about OneSignal Segments, audiences, cohorts, targeting groups, suppression groups, engaged users, inactive users, VIP users, purchasers, message clickers, custom-event audiences, or users matching behavior, attributes, tags, or subscription properties. Prefer this skill when the user describes building an audience for a campaign, Journey, message, analysis, or exclusion list, even if they do not explicitly say "Segment".
 ---
 
 # OneSignal Segments Skill
 
 ## Purpose
 
-Help OneSignal AI guide users from a broad audience request to a valid Segment definition.
+Help OneSignal AI guide users from a broad audience request to a valid OneSignal Segment definition.
 
-This skill currently has detailed guidance for **creating Segments**. It also reserves a placeholder for **analyzing or improving Segments**, which should be expanded later.
+This skill currently focuses on **creating Segments**. It also includes lightweight guidance for explaining existing Segments, but deeper Segment analysis/improvement should be expanded later.
 
 ## When to Use
 
@@ -23,118 +23,177 @@ Use this skill when the user asks for:
 - "Create a VIP users Segment"
 - "Target users who clicked"
 - "Target users who opened"
+- "Target users who purchased"
 - "Build an audience for this campaign"
 - "Build an audience for this Journey"
+- "Exclude users from this message"
 
-If the user says "audience", "cohort", or "targeting group", treat it as a likely OneSignal Segment unless they clearly mean a one-time recipient list or CSV import.
-
-## Supported Capabilities
-
-- `Create Segment`: turn audience intent into a valid Segment definition.
-- `Analyze Segment`: placeholder for future Segment analysis guidance.
-- `Improve Segment`: placeholder for future Segment refinement guidance.
+If the user says "audience", "cohort", "targeting group", or "suppression group", treat it as a likely OneSignal Segment unless they clearly mean a static CSV import, a one-time recipient list, or a dynamic API filter on a single message.
 
 ## Core Behavior
 
 When this skill is active:
 
-1. Determine whether the user wants to create, analyze, or improve a Segment.
-2. Determine what the user already provided.
-3. Ask only for missing information.
-4. Prefer a shared OneSignal AI artifact over freeform text when the user should choose from known options.
-5. For creation, summarize the proposed Segment before creating it.
-6. For creation, require explicit user approval before creating the Segment.
-7. Do not invent unsupported Segment filters or unsupported product behavior.
+1. Determine what audience outcome the user wants.
+2. Determine what the user already provided: purpose, channel, timeframe, behavior, attributes, tags, match logic, and Segment name.
+3. Ask only for missing information that materially changes the Segment.
+4. Use AskQuestion when the user should choose from product-owned options.
+5. Summarize the proposed Segment before creating it.
+6. Require explicit user approval before creating or modifying the Segment.
+7. Do not invent unsupported filters or unsupported API behavior.
 
-## Create Segment
-
-### Required Inputs
+## Required Inputs for Segment Creation
 
 A useful Segment definition usually needs:
 
-- Segment purpose or audience goal.
-- Segment type.
-- Filters or audience criteria.
+- Segment purpose.
+- Segment type or filter family.
+- Audience criteria.
 - Time window, if behavior/event-based.
 - Match logic, if multiple criteria exist.
 - Segment name.
 
 Do not ask for all of these at once if the user's prompt already provides some of them. Start with the most important missing decision.
 
-### Guided Artifact Behavior
+## AskQuestion Guidance
 
-The agent should request shared OneSignal AI artifact primitives.
+Use AskQuestion instead of freeform text when the user needs to choose from known product options.
 
-#### Segment Purpose Intake
+### Segment Purpose
 
-If the user asks to "create a Segment" or "build an audience" without specifying the purpose, request a `multi_select` artifact.
+If the user asks to "create a Segment" or "build an audience" without specifying the purpose, use AskQuestion.
 
-The artifact should present these options:
+Question:
+
+```text
+What's the goal of this Segment?
+```
+
+Options:
 
 - Send a campaign or newsletter
 - Suppress or exclude people
 - Track or analyze an audience
 - Re-engage inactive users
-- Something else
+- Type your answer
 
-Example artifact intent:
+### Segment Type
 
-```json
-{
-  "artifact": "multi_select",
-  "title": "What's the goal of this Segment? What do you want to do with it?",
-  "options": [
-    {
-      "id": "send_campaign",
-      "label": "Send a campaign or newsletter",
-      "description": "Target a specific audience for a one-time or ongoing message."
-    },
-    {
-      "id": "suppress_or_exclude",
-      "label": "Suppress or exclude people",
-      "description": "Keep certain people out of a campaign or flow."
-    },
-    {
-      "id": "track_or_analyze",
-      "label": "Track or analyze an audience",
-      "description": "Monitor a group over time without necessarily messaging them."
-    },
-    {
-      "id": "re_engage_inactive",
-      "label": "Re-engage inactive users",
-      "description": "Win back people who have gone quiet."
-    },
-    {
-      "id": "something_else",
-      "label": "Something else"
-    }
-  ]
-}
+If the user describes a broad audience but not the criteria type, use AskQuestion.
+
+Question:
+
+```text
+What kind of criteria should define this Segment?
 ```
 
-#### Ambiguous Audience Intake
+Options:
 
-If the user uses an ambiguous audience term, request a `multi_select` artifact to clarify what it means.
+- User behavior or activity
+- Message engagement
+- User tags or attributes
+- Location, language, app version, or device properties
+- Type your answer
 
-Examples:
+### Engagement Definition
 
-- "Most engaged" may mean opened, clicked, received, visited, purchased, or performed a custom event.
-- "Inactive" may mean no recent session, no message engagement, no purchase, or no custom event.
-- "VIP" may mean high purchase value, high engagement, specific tag/tier, or specific subscription plan.
+If the user says "engaged", "most engaged", "high intent", or similar without defining the signal, use AskQuestion.
 
-#### Channel or Setup Conflict
+Question:
 
-If the user requests a Segment based on a channel that is unavailable or not configured, explain the issue and request a `multi_select` artifact asking how they want to proceed.
+```text
+What should count as engaged?
+```
 
-Example options:
+Options:
 
-- Use a different enabled channel.
-- Proceed with custom events or tags.
-- Something else.
+- Opened a message
+- Clicked a message
+- Opened and clicked
+- Performed a custom event
+- Type your answer
 
-#### Summary Before Creation
+### Inactivity Definition
 
-When enough information exists to define a Segment, summarize it in plain text.
+If the user says "inactive", "lapsed", "dormant", or "churn risk" without defining inactivity, use AskQuestion.
+
+Question:
+
+```text
+What should count as inactive?
+```
+
+Options:
+
+- No recent app or website session
+- No recent message opens or clicks
+- No recent purchase or conversion event
+- No recent custom event
+- Type your answer
+
+### Channel Conflict
+
+If the user requests a Segment based on a channel that is unavailable, not configured, or unlikely to have native engagement data, explain the issue and use AskQuestion.
+
+Question:
+
+```text
+How would you like to proceed?
+```
+
+Options:
+
+- Use an enabled channel instead
+- Use custom events or tags
+- Continue anyway
+- Type your answer
+
+## Segment Rules
+
+- Segments update automatically as users interact with the app or site.
+- Segments can be created in the dashboard, via the Create Segment API, or by CSV import.
+- If no filters are selected, a Segment can default to every user of the app. Avoid this unless the user explicitly wants all users.
+- Subscription-based Segments use filters on subscription attributes such as device type, language, app version, tags, country, location, and session activity.
+- User-based Segments use user-level filters such as message events and custom events.
+- Message event filters can target interactions by channel, such as sent, delivered, opened, clicked, bounced, failed, suppressed, reported spam, or received depending on channel.
+- Custom event filters target meaningful actions tracked in the app, website, integrations, or API.
+- Public Create Segment API filters include tag, last session, first session, session count, session time, language, app version, location, and country.
+- Dashboard-created message-event or custom-event Segments may not be fully supported by public Create/Update Segment APIs.
+- Filters can be combined with AND/OR logic. AND is the default; OR must be explicit.
+- Push, email, and SMS messages are only sent to opted-in Subscriptions when targeting a Segment.
+- In-app messages can display to mobile Subscriptions regardless of status.
+- When used in Journeys, Segments evaluate Subscriptions to Users, and matching users enter the Journey.
+- Audience counts include subscribed and unsubscribed Subscriptions for transparency.
+- Audience counts may be exact or estimated. Estimates should be clearly labeled.
+- User-based Segment counts may not be available in all contexts.
+
+## Common Defaults and Best Practices
+
+- For campaign targeting, clarify whether the Segment is meant to include or exclude users.
+- For behavioral Segments, ask for a timeframe if one is missing.
+- For "engaged" audiences, ask which engagement signals count.
+- For "inactive" audiences, ask what inactivity means and what timeframe to use.
+- For "VIP" audiences, clarify whether VIP means value, tag/tier, purchase behavior, or engagement.
+- For multi-condition Segments, clarify whether the user expects AND or OR logic.
+- Suggest a clear Segment name if the user does not provide one.
+- Summarize human-readable criteria before showing or creating raw filters.
+- Avoid PII in tags or tag-derived criteria.
+
+## Tool Guidance
+
+Use available tools to:
+
+- List existing Segments when the user references one by name.
+- Inspect an existing Segment before explaining or modifying it.
+- Preview or validate audience counts before creation, if supported.
+- Inspect channel/platform setup when the Segment depends on channel engagement.
+- Create the Segment only after summarizing it and receiving explicit user approval.
+
+Do not expose internal tool mechanics to the user.
+
+## Summary and Approval
+
+Before creating a Segment, summarize it in plain text.
 
 The summary should include:
 
@@ -147,109 +206,46 @@ The summary should include:
 - Assumptions.
 - Limitations or warnings.
 
-#### Approval
-
-Before creating a Segment, ask the user to approve the summarized definition in plain text.
-
-Do not create the Segment until the user confirms.
-
-## Analyze / Improve Segment
-
-Placeholder for future work.
-
-For now:
-
-- If the user asks to analyze or improve a Segment, explain that detailed analysis/refinement guidance is not fully defined in this skill yet.
-- Use available Segment details and audience counts if tools/context are available.
-- Prefer a concise summary with obvious findings over inventing unsupported diagnostics.
-- Do not modify the Segment as part of analysis.
-
-Future guidance should define:
-
-- Required context for analysis.
-- Which audience counts and filter details to inspect.
-- How to detect over-broad, too-narrow, stale, or risky Segment definitions.
-- Which chart or insight artifacts to request.
-- How to recommend next actions.
-
-## Product Rules
-
-- Segments update automatically as users interact with the app or site.
-- Segments can be created in the dashboard, via API, or by CSV import.
-- If no filters are selected, a Segment can default to every user of the app; avoid this unless the user explicitly wants all users.
-- Subscription-based Segments use filters on subscription attributes like device type, language, app version, tags, country, location, and session activity.
-- User-based Segments use user-level filters such as message events and custom events.
-- Message event filters can target interactions like sent, delivered, opened, clicked, bounced, failed, suppressed, or reported spam depending on channel.
-- Custom event filters can target meaningful actions tracked in the app, website, or external systems.
-- Message event and custom event Segments may have product/plan/data-retention constraints.
-- Push, email, and SMS messages are only sent to subscribed Subscriptions when targeting a Segment. In-app messages can display regardless of subscription status.
-- In Journeys, Segments evaluate Subscriptions to Users and all matching Users can enter the Journey.
-- Use AND when all filters must match. Use OR when any condition can match.
-
-## Common Defaults and Best Practices
-
-- For "engaged" audiences, clarify which engagement signals count.
-- For "inactive" audiences, clarify what inactivity means and what timeframe to use.
-- For campaign targeting, clarify whether the Segment should include or exclude users.
-- For behavioral Segments, ask for a timeframe if one is not supplied.
-- For multi-condition Segments, clarify whether the user expects AND or OR logic.
-- Use human-readable criteria before showing raw filters.
-
-## Tool Guidance
-
-Use available tools to:
-
-- List existing Segments when the user references one by name.
-- Preview or validate Segment counts before creation, if supported.
-- Inspect channel/platform setup if the Segment depends on channel engagement.
-- Create the Segment only after summarizing it and receiving user approval.
-
-Do not expose internal tool mechanics to the user.
+Ask the user to approve the summarized Segment before creating it.
 
 ## Examples
 
-### Generic Request
+### Generic Segment Request
 
 User:
 
-> Create a Segment.
+```text
+Create a Segment.
+```
 
 Behavior:
 
-- Request a `multi_select` artifact asking for Segment purpose.
+- Use AskQuestion to ask the Segment purpose.
 - Present purpose options.
-- Continue collecting missing inputs after the user answers.
+- Continue collecting only missing inputs after the user answers.
 
 ### Engaged Email Users
 
 User:
 
-> Create a most engaged Segment of my users over the email channel over the last 7 days.
+```text
+Create a most engaged Segment of my users over the email channel over the last 7 days.
+```
 
 Behavior:
 
 - Treat channel and timeframe as known.
-- Clarify what "most engaged" means.
-- Useful options include opened an email, clicked an email, both opened and clicked, and something else.
+- Use AskQuestion to clarify what "most engaged" means.
+- Useful options: opened a message, clicked a message, opened and clicked, performed a custom event, type your answer.
 - Summarize the Segment before asking for approval.
-
-### Disabled Channel Conflict
-
-User:
-
-> Create a most engaged Segment over SMS in the last 7 days.
-
-Behavior:
-
-- If SMS is unavailable or disabled, explain that native SMS engagement may not be available.
-- Ask how the user wants to proceed.
-- Useful options include use an enabled channel, proceed with custom events/tags, or something else.
 
 ### Inactive Users
 
 User:
 
-> Create a Segment for users who have not opened the app in 30 days.
+```text
+Create a Segment for users who have not opened the app in 30 days.
+```
 
 Behavior:
 
@@ -257,22 +253,23 @@ Behavior:
 - Suggest a clear Segment name.
 - Summarize criteria before asking for approval.
 
-### Analyze / Improve Placeholder
+### Channel Conflict
 
 User:
 
-> Is this Segment too broad?
+```text
+Create a most engaged Segment over SMS in the last 7 days.
+```
 
 Behavior:
 
-- State that detailed Segment analysis guidance is not fully defined yet.
-- Inspect available Segment criteria and counts if tools/context are available.
-- Provide a concise summary of obvious findings.
-- Do not update the Segment.
+- If SMS is unavailable or not configured, explain that native SMS engagement may not be available.
+- Use AskQuestion to ask how to proceed.
+- Useful options: use an enabled channel instead, use custom events or tags, continue anyway, type your answer.
 
 ### Text Fallback
 
-If rich artifacts cannot render, ask the same structured question in text:
+If structured question UI cannot render, ask the same question in text:
 
 ```text
 What's the goal of this Segment?
@@ -280,7 +277,7 @@ What's the goal of this Segment?
 2. Suppress or exclude people
 3. Track or analyze an audience
 4. Re-engage inactive users
-5. Something else
+5. Type your answer
 ```
 
 ## Anti-Patterns

@@ -26,20 +26,16 @@ Shared artifact schemas and renderers do **not** live in this repository. Artifa
 
 ## Current Examples
 
-- `skills/journeys/`: example Journeys skill focused on creating OneSignal Journeys, with an analysis placeholder.
+- `skills/skill-creator/`: helper skill for creating and refining OneSignal AI domain skills.
 - `skills/segments/`: example Segments skill for creating OneSignal audience Segments.
-- `example-template/domain-skill/`: generic template domain owners can clone when creating new OneSignal AI skills.
 
 ## Suggested Shape
 
 ```text
 onesignal-ai-skills/
   README.md
-  example-template/
-    domain-skill/
-      SKILL.md
   skills/
-    journeys/
+    skill-creator/
       SKILL.md
     segments/
       SKILL.md
