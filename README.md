@@ -28,6 +28,7 @@ Shared artifact schemas and renderers do **not** live in this repository. Artifa
 
 - `skills/skill-creator/`: helper skill for creating and refining OneSignal AI domain skills.
 - `skills/segments/`: example Segments skill for creating OneSignal audience Segments.
+- `skills/mobile-sdk-setup/`: example setup skill for guiding mobile SDK installation and troubleshooting.
 
 ## Suggested Shape
 
@@ -38,6 +39,8 @@ onesignal-ai-skills/
     skill-creator/
       SKILL.md
     segments/
+      SKILL.md
+    mobile-sdk-setup/
       SKILL.md
     templates/
       SKILL.md
