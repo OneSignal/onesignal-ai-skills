@@ -30,6 +30,7 @@ Shared artifact schemas and renderers do **not** live in this repository. Artifa
 - `skills/segments/`: example Segments skill for creating OneSignal audience Segments.
 - `skills/mobile-sdk-setup/`: example setup skill for guiding mobile SDK installation and troubleshooting.
 - `skills/iam-html-composer/`: skill for generating production-ready mobile HTML in-app messages.
+- `skills/journeys/`: example Journeys skill for designing OneSignal multichannel automation flows.
 
 ## Suggested Shape
 
@@ -42,6 +43,8 @@ onesignal-ai-skills/
     segments/
       SKILL.md
     mobile-sdk-setup/
+      SKILL.md
+    journeys/
       SKILL.md
     templates/
       SKILL.md
