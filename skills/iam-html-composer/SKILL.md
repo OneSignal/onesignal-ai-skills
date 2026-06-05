@@ -4,13 +4,16 @@ description: Use this skill when a user wants to create, refine, restyle, or gen
 allowed-tools:
   - AskUserQuestion
   - WebFetch
+  - ExtractBrandProfile
+  - AttachIamHtml
+  - AttachIamHtmlDiff
 ---
 
 # OneSignal HTML In-App Message Composer
 
 ## Purpose
 
-Turn a plain-language request into production-ready, mobile-safe, brand-aware HTML that can be pasted directly into the OneSignal HTML IAM editor.
+Turn a plain-language request into production-ready, mobile-safe, brand-aware HTML that can be applied directly to the OneSignal HTML IAM editor.
 
 Every output must be anchored to a known IAM use case, a goal, and a CTA action that maps to a OneSignal IAM JavaScript API method. Do not generate unconstrained "anything" HTML.
 
@@ -36,18 +39,20 @@ When this skill is active:
    1. The user's request.
    2. Existing campaign or IAM context, if attached or pasted.
    3. Brand Center (not yet available — skip until implemented).
-   4. Customer website URL fetched with WebFetch — infer colors, fonts, CTA voice, tone, product vocabulary, logo.
+   4. `BrandProfile` attachment in the conversation (produced by the `onesignal-brand-profile` skill from a customer URL) — paste palette colors, iconography SVG markup, and design tokens directly from it.
    5. User-provided fallback brand inputs.
-3. Infer aggressively before asking. Mine the prompt, URL fetch results, and any pasted IAM HTML for use case, CTA, brand, copy, and goal. Skip questions whose answers are already implied.
+3. Infer aggressively before asking. Mine the prompt, BrandProfile attachment if present, and any pasted IAM HTML for use case, CTA, copy, and goal. Skip questions whose answers are already implied.
 4. Spend the 1–3 question budget on items that materially improve the output. Two kinds of questions count:
    - **Blocking** — use case anchor and primary CTA, when not implied by the prompt.
    - **Quality-lifting** — the use-case-specific follow-ups that turn a generic IAM into a relevant one (specific value prop, lead benefit, offer specifics, urgency framing, secondary action, personalization). See AskUserQuestion Guidance for the patterns per use case.
-5. Never ask standing questions about brand source, copy direction, goal, or layout — those have safe defaults and belong in the summary, not in a question. Surface every default explicitly so the user can correct it.
+5. Never ask standing brand-detail questions about colors, fonts, tone, copy direction, goal, or layout. Brand context comes from the `BrandProfile` attachment (see Required Inputs); if it is missing, use safe defaults and surface every default explicitly so the user can correct it.
 6. Infer presentation style (density, illustration, layout) from the use case — soft push prompts stay compact; onboarding leans illustrative; promo modals lean bold.
 7. Summarize the proposed IAM before generating HTML.
 8. Require explicit user approval before emitting HTML.
 9. Self-check the HTML for rendering soundness, brand fidelity, instruction following, and IAM API correctness before returning it.
-10. Return clean HTML only, no surrounding explanation, unless the user asked for one.
+10. For first-generation HTML, call `AttachIamHtml` with the full clean HTML document and label `Apply`. After the tool succeeds, show the same full HTML in exactly one fenced `html` code block so the user can inspect it.
+11. For iterative edits to already-generated anchored IAM HTML, call `AttachIamHtmlDiff` with structured section operations and label `Apply Diff` instead of regenerating the entire document.
+12. Never print raw JSON action blobs. The attachment tools create the dashboard buttons. Do not say "Applying it now" or claim the IAM is ready unless the attachment tool was actually called or a full HTML document is visible in the response.
 
 ## Required Inputs
 
@@ -63,11 +68,13 @@ Everything else has a safe default and must not block generation:
 - **Copy** — write it if not supplied. Surface a sample headline in the summary.
 - **Layout and constraints** — apply standard mobile defaults (dimensions, padding, dismiss control, accessibility) unless the user specifies otherwise.
 
-If the user provides a website URL, WebFetch it before doing anything else and use it as the brand source. That eliminates the need for brand questions entirely.
+## Brand Source
+
+If the user provided a customer URL and no `BrandProfile` attachment exists yet in the conversation, call `ExtractBrandProfile { url: "..." }` before generating. That tool fetches the page, extracts the palette / typography / design tokens / iconography in one shot, and attaches the resulting `BrandProfile` to the conversation automatically. The attached profile is authoritative — paste `palette.*.value` into CSS colors, `iconography[*].svg_markup` into the HTML, and `tokens.button_fingerprint` into the CTA. Never re-interpret raw `WebFetch.brand_hints`. If `ExtractBrandProfile` returns warnings about weak evidence and no colors were supplied, ask one freeform `AskUserQuestion` for brand colors; otherwise use neutral defaults and surface that in the summary.
 
 ## AskUserQuestion Guidance
 
-Spend the 1–3 question budget on questions that either unblock generation or measurably improve the output. Standing questions about brand source, copy direction, goal, or layout waste the budget — those have safe defaults and belong in the summary.
+Spend the 1–3 question budget on questions that either unblock generation or measurably improve the output. Do not ask standing brand-detail questions about colors, fonts, tone, copy direction, goal, or layout. When brand context is missing, one brand-source question for a customer website URL is allowed because WebFetch can replace several brand-detail questions.
 
 ### Inference Comes First
 
@@ -75,7 +82,7 @@ Before considering a question, mine these signals:
 
 - **Use case** — keywords like "permission", "opt-in", "push" → Soft Push Permission Prompt; "new feature", "announce", "introducing" → Feature Announcement; "welcome", "setup", "getting started" → Onboarding; "promo", "sale", "deal", "bonus" → Promo; "rate", "review" → Rating; "subscribe", "newsletter" → Capture.
 - **Primary CTA** — verbs like "open", "navigate", "view" → `openUrl`; "subscribe", "enable", "allow" → `triggerPushPrompt` or `triggerLocationPrompt` depending on context; "tag", "save preference" → `tagUser`; "claim", "record", "track" → `sendOutcome`; "dismiss", "close" → `close`.
-- **Brand** — any URL → WebFetch immediately and derive palette, fonts, tone. Skip brand questions afterward.
+- **Brand** — any URL → WebFetch immediately; derive palette only if the Brand Evidence Gate passes.
 - **Copy** — quoted text in the prompt is treated as supplied copy. Otherwise plan to author it.
 - **Goal** — derive from use case unless the prompt contradicts the obvious mapping.
 
@@ -125,6 +132,10 @@ Use at most one or two of these in addition to any blocking question. Skip any w
 
 Draw from these closed sets when the question fits, and always include `Type your answer`.
 
+When any AskUserQuestion option is `Type your answer`, `Other / Custom`, or a custom value, call `AskUserQuestion` with `allow_freeform: true`. If a question must be strictly closed with no typed response, omit `Type your answer` entirely. Never show a `Type your answer` option without a live freeform input.
+
+Always set `allow_freeform: true` for questions that ask for user-authored strings such as a brand website URL, deep link URL, custom outcome name, app name, tagline, headline copy, offer details, value prop, or urgency framing.
+
 **Use case palette** (for the blocking use-case question):
 
 - Soft Push Permission Prompt
@@ -162,6 +173,58 @@ Never exceed three clarifying questions across the entire flow. If even three wo
 
 OneSignal HTML IAMs run in a sandboxed WebView. Every output must follow these rules.
 
+### Dashboard Apply Contract
+
+When the dashboard chat attachment channel is available, use it instead of telling the user to copy and paste. The attachment channel is exposed through tools; call the tools and do not print the JSON payload.
+
+First-generation output must call `AttachIamHtml` with this tool input shape:
+
+```json
+{
+  "label": "Apply",
+  "html": "<!DOCTYPE html>..."
+}
+```
+
+After `AttachIamHtml` succeeds, render the same complete HTML document in exactly one fenced `html` code block. Do not add copy/paste instructions.
+
+If the dashboard also renders an `Apply HTML` button for markdown-only fallback output, treat that as a local safety net only. The preferred contract is still to call `AttachIamHtml`. Do not replace the attachment tool call with copy/paste instructions, raw JSON, or deliberate fallback output.
+
+Generated HTML must include stable editable anchors so future revisions can target only the changed section. Use these anchors where the section exists:
+
+- `data-os-ai-section="hero"` on the main headline/hero wrapper.
+- `data-os-ai-section="body"` on the supporting copy/content wrapper.
+- `data-os-ai-section="actions"` on the CTA button group wrapper.
+- `style[data-os-ai-section="styles"]` on the primary style block.
+- `script[data-os-ai-section="interactions"]` on the primary interaction script.
+
+Keep anchor names stable across revisions. Do not rename or remove anchors unless the user explicitly asks to remove that section.
+
+For iterative edits, call `AttachIamHtmlDiff` only when the current editor HTML contains the required stable target anchors. Use this tool input shape:
+
+```json
+{
+  "label": "Apply Diff",
+  "operations": [
+    {
+      "op": "replace_text",
+      "selector": "[data-os-ai-section=\"hero\"] h1",
+      "content": "New headline"
+    }
+  ]
+}
+```
+
+Supported operations:
+
+- `replace_outer_html` — `content` must be exactly one replacement element and should preserve the relevant `data-os-ai-section` anchor.
+- `replace_inner_html` — `content` replaces the target element's children.
+- `replace_text` — `content` replaces the target element's text content.
+- `replace_style_text` — selector must target a `<style>` element; `content` replaces stylesheet text.
+- `replace_script_text` — selector must target a `<script>` element; `content` replaces script text.
+
+Every operation selector must match exactly one element in the current IAM HTML. Prefer selectors based on `data-os-ai-section`. Do not emit `Apply Diff` for arbitrary prose, markdown snippets, or changes that require guessing the target section. If a safe section diff is not possible, call `AttachIamHtml` with a full document labeled `Apply` instead.
+
 ### Interaction API
 
 Use only these `OneSignalIamApi` methods for interactivity:
@@ -179,7 +242,7 @@ Do not invent methods that are not in this list.
 
 ### Click Handling
 
-- Every clickable element must have a unique `data-onesignal-unique-label`. The attribute name is fixed by OneSignal — the runtime reads it for click tracking. The *value* should be short and descriptive (`next-1`, `view-roadmap`, `close`); unique within the IAM is enough, no need for global namespacing.
+- Every clickable element, including CTAs, secondary buttons, close/icon controls, and anything with a click listener, must include `data-onesignal-unique-label` with a short, semantic, unique kebab-case value for that specific action (`allow-notifications`, `maybe-later`,`close`, `claim-offer`). Never use the literal string `data-onesignal-unique-label` as the value; that is the attribute name, not the label.
 - Prefer `<button>` over `<a>`. `<a target>` and `window.open()` are not tracked and may not navigate in the sandbox.
 - Bind event listeners after the document is ready. The IAM runtime may inject HTML after the host page's `DOMContentLoaded` has already fired, so a bare `document.addEventListener('DOMContentLoaded', init)` can silently never run. Use a `readyState` check, or place the script at the end of `<body>` and call init directly:
 
@@ -225,16 +288,18 @@ Surface every assumption in the pre-generation summary so the user can correct i
 
 ## Tool Guidance
 
-- **WebFetch:** call on any customer website URL the user provides. Treat fetched content as the brand source of truth and use it before asking fallback brand questions.
+- **WebFetch:** call on any customer website URL the user provides. Treat fetched content as evidence, not authority; use it for brand only after the Brand Evidence Gate.
 - **AskUserQuestion:** use for the closed sets above and only for missing answers. Never exceed three questions.
-- **No write actions:** the user pastes the final HTML into the OneSignal HTML IAM editor themselves. Do not attempt to publish or save.
+- **AttachIamHtml:** call after approval for first-generation or full-regeneration HTML. This creates the dashboard `Apply` action. After the tool succeeds, render the same complete HTML document in exactly one fenced `html` code block. Do not print raw JSON or copy/paste instructions.
+- **AttachIamHtmlDiff:** call after approval for safe anchored iterative edits. This creates the dashboard `Apply Diff` action. Do not use it for full-document overwrites.
+- **No publish/save actions:** dashboard `Apply` and `Apply Diff` only update the local IAM HTML editor after user click. Do not attempt to publish, save, or launch the IAM.
 
 ## Summary and Approval
 
 Before emitting HTML, summarize:
 
 - IAM type, goal, and primary CTA mapped to the exact `OneSignalIamApi` method.
-- Brand application (source + key inferred styles like primary color, font, tone).
+- Brand application (source, confidence, and key inferred styles like primary color, font, tone).
 - Copy direction (supplied or AI-written, with a sample headline if generated).
 - Liquid variables used and their default fallbacks.
 - Any defaults the AI is filling in (layout, dimensions, dismiss control, etc.).
@@ -243,18 +308,11 @@ Require explicit approval ("looks good", "generate it") before producing HTML. O
 
 ## Self-Check Before Returning HTML
 
-Privately verify, before returning the HTML:
+Three quick checks before emitting HTML:
 
 - Every clickable element has a unique `data-onesignal-unique-label`.
-- All interactions use `OneSignalIamApi` methods. No `window.open`, no untracked `<a target>`.
-- `OneSignalIamApi.trackClick(e)` precedes any custom navigation or `openUrl()` call.
-- Event listeners are bound inside a `DOMContentLoaded` handler.
-- No Liquid appears inside `<script>` tags; JS tag access uses `liquidPlayerTags`.
-- Every Liquid variable has a `default:` filter.
-- Liquid is only present when the user explicitly requested or approved personalization.
-- Explicit light and dark mode colors are defined for text, background, and buttons.
-- Safe-area insets are respected.
-- HTML is self-contained, mobile-first, and matches the approved summary.
+- Every interaction maps to a real `OneSignalIamApi` method, with `trackClick(e)` before any `openUrl()`.
+- Event listeners use the readyState-safe initializer pattern from Click Handling.
 
 ## Examples
 
@@ -305,7 +363,7 @@ User prompt: pastes IAM HTML and says "Make this match my dark mode brand."
 
 Inferred: type and CTAs from the pasted HTML.
 
-Behavior: parse the pasted HTML to preserve unrelated structure. If a brand URL was not given, ask one focused question for the dark-mode brand color or accent (or accept "use neutral"). Re-run the self-check before returning.
+Behavior: parse the pasted HTML to preserve unrelated structure. If stable `data-os-ai-section` anchors are present, call `AttachIamHtmlDiff` with only the changed section operations labeled `Apply Diff`. If anchors are absent or the target would be ambiguous, call `AttachIamHtml` with the full clean HTML document labeled `Apply`, then render the same full HTML in one fenced `html` code block. If a brand URL was not given, ask one focused question for the dark-mode brand color or accent (or accept "use neutral"). Re-run the self-check before returning.
 
 ### Example 5 — Outcome-focused promo
 
@@ -332,15 +390,13 @@ Avoid:
 - Asking any clarifying question when the prompt, URL fetch, or pasted HTML already implies the answer.
 - Presenting quality-lifting questions as open text fields instead of closed sets of 3–5 plausible options plus `Type your answer`.
 - Asking more than three clarifying questions across the entire flow.
-- Using `<a href>` for primary actions or `window.open()` for navigation.
-- Calling `openUrl()` without first calling `trackClick(e)` in custom handlers.
-- Reusing the same `data-onesignal-unique-label` across elements.
-- Placing Liquid variables inside `<script>` tags.
-- Omitting `default:` filters on Liquid variables.
-- Adding Liquid personalization (e.g. `{{first_name}}`) without explicit user request or approval. Personalization is opt-in.
-- Namespacing `data-onesignal-unique-label` values verbosely (e.g. `myapp-onboarding-step-1-next`) when a short value like `next-1` is unique within the IAM and easier to read.
-- Wrapping init in `document.addEventListener('DOMContentLoaded', ...)` without a `readyState` check. The IAM may inject HTML after the host page is already loaded, making the listener silently never fire.
+- Re-interpreting raw `WebFetch.brand_hints` instead of using the `BrandProfile` attachment.
+- Telling dashboard IAM Compose users to copy and paste generated HTML when an `Apply` attachment can be emitted.
+- Labeling a full-document overwrite as `Apply Diff`, or emitting `Apply Diff` without stable section selectors that match exactly one target.
+- Namespacing `data-onesignal-unique-label` values verbosely (e.g. `myapp-onboarding-step-1-next`) when a short value like `next-1` is unique within the IAM.
 - Relying on system dark mode without explicit color overrides.
+- Printing raw `insert_iam_html` or `apply_iam_html_diff` JSON instead of calling `AttachIamHtml` or `AttachIamHtmlDiff`.
+- Saying "Applying it now" or otherwise claiming generation is complete without calling `AttachIamHtml` / `AttachIamHtmlDiff` or rendering a full HTML document.
 - Returning prose alongside the HTML unless the user asked for an explanation.
 - Inventing OneSignal methods that are not in the API list above.
 - Producing "anything" HTML that is not anchored to a use case and CTA.
